@@ -1,0 +1,24 @@
+sim_clock:
+  real_start: "2026-09-22T00:00:00Z"
+  sim_start_date: "2026-01-01"
+  sim_day_seconds: 300
+
+kafka:
+  bootstrap_servers: "localhost:9092"
+  topic_vitals: "vitals-stream"
+  topic_dlq: "vitals-dlq"
+  partitions: 3
+  replication_factor: 1
+
+simulator:
+  num_patients: 20
+  emit_interval_seconds: 3
+  spike_probability: 0.05
+  null_field_probability: 0.01
+  duplicate_probability: 0.005
+  late_event_probability: 0.02
+  seed: 42
+
+paths:
+  landing_labs: "data/landing/labs"
+  archive_vitals: "data/archive/vitals"
