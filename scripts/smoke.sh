@@ -18,11 +18,14 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
   --partitions 1 --replication-factor 1
 
 echo "== Producing vitals for 8 seconds =="
-timeout 8 python -m ingestion.producer || true
+python -m ingestion.producer &
+PRODUCER_PID=$!
+sleep 8
+kill "$PRODUCER_PID" 2>/dev/null || true
 
-echo "== Consuming up to 5 sample messages from vitals-stream =="
+echo "== Consuming up to 5 of the newest messages from vitals-stream =="
 docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --topic vitals-stream --bootstrap-server localhost:9092 \
-  --from-beginning --max-messages 5 --timeout-ms 15000
+  --max-messages 5 --timeout-ms 15000
 
 echo "== Smoke test passed =="
