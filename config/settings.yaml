@@ -22,3 +22,8 @@ simulator:
 paths:
   landing_labs: "data/landing/labs"
   archive_vitals: "data/archive/vitals"
+
+observability:
+  producer_metrics_port: 8001
+  lab_loader_metrics_port: 8002
+
