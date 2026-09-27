@@ -1,0 +1,32 @@
+# Prometheus alerting rules for the ward monitoring pipeline.
+# View firing/pending alerts at http://localhost:9090/alerts
+
+groups:
+  - name: vitals_pipeline
+    rules:
+      - alert: NoVitalsReceived
+        # vitals_last_event_unix_seconds is a gauge set to the Unix time of the
+        # last successfully published vitals event. If it hasn't moved in the
+        # last 60 seconds, nothing is reaching Kafka -- the producer or
+        # simulator has likely died.
+        expr: time() - vitals_last_event_unix_seconds > 60
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "No vitals events received in over 60 seconds"
+          description: >-
+            The producer has not published a vitals event recently.
+            Check whether the producer process or simulator has crashed.
+
+      - alert: DlqErrorRateHigh
+        # Fires if the DLQ is absorbing more than 1 rejected event per second,
+        # averaged over 2 minutes -- a sign of a systemic upstream data problem
+        # rather than the occasional expected bad record.
+        expr: rate(vitals_dlq_total[2m]) > 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DLQ error rate is unusually high"
+          description: "More than 1 event/sec is being routed to vitals-dlq (2m average)."

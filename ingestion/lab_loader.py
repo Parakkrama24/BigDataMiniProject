@@ -1,13 +1,13 @@
 import csv
 import shutil
-from pathlib import Path
 import time
+from pathlib import Path
 
 from common.config import load_settings
 from observability.logging_config import get_logger
+from observability.metrics import counter, start_metrics_server
 
 logger = get_logger("lab_loader")
-from observability.metrics import counter, start_metrics_server
 
 LABS_ACCEPTED = counter("lab_files_accepted_total", "Lab files that passed validation")
 LABS_REJECTED = counter("lab_files_rejected_total", "Lab files that failed validation")

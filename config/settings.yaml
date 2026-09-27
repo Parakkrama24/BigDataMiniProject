@@ -1,5 +1,5 @@
 sim_clock:
-  real_start: "2026-09-22T00:00:00Z"
+  real_start: "2026-09-27T18:21:28Z"
   sim_start_date: "2026-01-01"
   sim_day_seconds: 300
 

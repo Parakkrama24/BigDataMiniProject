@@ -1,0 +1,15 @@
+# Auto-registers Prometheus as a Grafana data source on container startup,
+# so nobody has to click through the Grafana UI to wire it up by hand.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    # "prometheus" resolves via Docker's internal DNS to the prometheus
+    # service defined in docker-compose.yml -- containers on the same
+    # Compose network can reach each other by service name.
+    url: http://prometheus:9090
+    uid: prometheus
+    isDefault: true
+    editable: true
