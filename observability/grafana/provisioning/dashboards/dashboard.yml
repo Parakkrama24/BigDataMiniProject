@@ -1,0 +1,14 @@
+# Tells Grafana to auto-load any dashboard JSON files it finds in the
+# mounted /var/lib/grafana/dashboards folder on startup.
+apiVersion: 1
+
+providers:
+  - name: default
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
