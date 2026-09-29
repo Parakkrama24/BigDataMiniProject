@@ -21,8 +21,9 @@ Per-member task breakdown: [MEMBER_1_DATA_AND_INGESTION.md](MEMBER_1_DATA_AND_IN
   rate high).
 - **Infra** — one `docker-compose.yml` for Kafka, Prometheus, and Grafana.
 
-Streaming processing (Spark), the API, batch/Airflow, and storage are the
-other two members' parts and aren't implemented yet — see the linked plan docs.
+Streaming processing (Spark) remains the other member's part. Member 3's
+batch/storage slice now includes the PostgreSQL schema, pure batch transforms,
+the report router, and an Airflow DAG scaffold.
 
 ## Prerequisites
 
@@ -72,7 +73,15 @@ Each of these runs in its own terminal and keeps running until you `Ctrl+C`:
 python -m ingestion.producer      # simulates + publishes vitals to Kafka
 python -m ingestion.lab_loader    # watches data/landing/labs/ and files daily lab CSVs
 python -m simulators.lab_simulator  # generates one day's lab CSV into data/landing/labs/
+python -m storage.seed_patients patients.csv postgresql://hospital:hospital@localhost:5432/hospital
 ```
+
+Member 3 batch development can run without Docker dependencies against the
+committed samples. The pure transformations are in `batch/pipeline.py`, the
+risk formula is in `batch/risk.py`, and the daily report route is
+`GET /reports/daily/{date}`. Start PostgreSQL with `docker compose up -d
+postgres`; its first startup applies `storage/schema.sql`. Airflow uses the
+`daily_risk_report` DAG and supports catchup/backfill by simulated date.
 
 Verify the whole ingestion path in one shot:
 
@@ -114,7 +123,7 @@ streaming/      Spark Structured Streaming job (Member 2 — not yet implemented
 api/            FastAPI serving layer (Member 2 — not yet implemented)
 batch/          Spark batch jobs (Member 3 — not yet implemented)
 airflow/        Airflow DAGs (Member 3 — not yet implemented)
-storage/        DB schema/migrations (Member 3 — not yet implemented)
+storage/        PostgreSQL schema, seed loader, and archive contract (Member 3)
 config/         settings.yaml — single source of truth for all configuration
 docs/samples/   committed example output from the simulators
 scripts/        smoke tests, demo scripts, sim-clock reset helper
