@@ -1,5 +1,5 @@
 sim_clock:
-  real_start: "2026-09-22T00:00:00Z"
+  real_start: "2026-09-27T18:21:28Z"
   sim_start_date: "2026-01-01"
   sim_day_seconds: 300
 
@@ -22,3 +22,8 @@ simulator:
 paths:
   landing_labs: "data/landing/labs"
   archive_vitals: "data/archive/vitals"
+
+observability:
+  producer_metrics_port: 8001
+  lab_loader_metrics_port: 8002
+
