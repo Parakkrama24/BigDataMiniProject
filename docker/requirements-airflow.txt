@@ -1,0 +1,8 @@
+# Extra packages the Airflow image needs to run our DAG.
+# The official apache/airflow image already ships PyYAML and psycopg2 (for
+# Airflow's own metadata database), but our DAG and batch code need these:
+#   psycopg 3  -- batch write_report_task and api/routers/reports.py
+#   pyarrow    -- batch/pipeline.py reads the Parquet vitals archive
+# Versions match requirements.txt so containers and local runs agree.
+psycopg[binary]==3.2.3
+pyarrow==23.0.1

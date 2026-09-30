@@ -1,0 +1,10 @@
+# Dependencies for the FastAPI serving container only.
+#
+# Deliberately not the full requirements.txt: that includes pyspark (~300MB),
+# which the API never imports. Versions match requirements.txt so the
+# container and a local `uvicorn api.main:app` behave the same.
+PyYAML==6.0.3
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+psycopg[binary]==3.2.3
+psycopg-pool==3.2.4
