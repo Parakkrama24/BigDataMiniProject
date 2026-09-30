@@ -38,9 +38,18 @@ OPEN_ALERT_SQL = """
 # Closes any open alert whose condition is no longer flagged in this window.
 # `alert_type <> ALL('{}')` is true for every row, so an empty flag list
 # correctly resolves all of that patient's open alerts.
+#
+# The triggered_at guard matters: Spark's update output mode emits windows out
+# of order across micro-batches (late events produce an earlier window after a
+# later one has already been seen), so without it a window ending at 10:00 can
+# try to resolve an alert triggered at 10:05. That gives resolved_at <
+# triggered_at, which violates the alerts_log CHECK constraint and kills the
+# streaming query. A window can only close an alert that was already open by
+# the time that window ended.
 RESOLVE_ALERTS_SQL = """
     UPDATE alerts_log SET resolved_at = %s
     WHERE patient_id = %s AND resolved_at IS NULL AND alert_type <> ALL(%s)
+      AND triggered_at <= %s
 """
 
 LIVE_FIELDS = (
@@ -81,5 +90,6 @@ def write_window(cursor, row: Mapping[str, Any]) -> list[str]:
             (patient_id, alert_type, row["window_start"], patient_id, alert_type),
         )
 
-    cursor.execute(RESOLVE_ALERTS_SQL, (row["window_end"], patient_id, flags))
+    window_end = row["window_end"]
+    cursor.execute(RESOLVE_ALERTS_SQL, (window_end, patient_id, flags, window_end))
     return flags

@@ -49,6 +49,22 @@ One simulated day passes every `sim_clock.sim_day_seconds` real seconds
 - Header: `trace_id` — the event's `event_id`, for tracing across stages.
 - Partitions: 3.
 
+**Two bootstrap addresses, depending on where your client runs:**
+
+| Client location | Bootstrap server |
+|---|---|
+| Host process (`ingestion.producer`, smoke tests) | `localhost:9092` |
+| Another container (a Spark container, for example) | `kafka:29092` |
+
+A broker advertises one address per listener. With only `localhost:9092`
+advertised, a container connecting to `kafka:9092` is told to continue the
+conversation with "localhost", which resolves to the container itself, so it
+never reaches the broker. Hence the separate `INTERNAL` listener.
+
+Kafka has **no persistent volume** in `docker-compose.yml`, so topics are lost
+whenever the container is recreated. Recreate them with the commands in the
+README (or run `scripts/smoke.ps1`, which does it).
+
 ```json
 {
   "event_id": "uuid4 string",

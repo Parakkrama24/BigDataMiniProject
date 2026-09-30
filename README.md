@@ -36,10 +36,38 @@ lab_simulator ──► data/landing/labs ──► lab_loader ──► process
 ## Prerequisites
 
 - Docker Desktop
-- Python 3.11+ (`pip install -r requirements.txt`)
+- **Python 3.10 or 3.11** (`pip install -r requirements.txt`)
 - On Windows, run Python commands from **PowerShell**. Git Bash works for most
   things but has two quirks the scripts work around — see the comments in
   [scripts/smoke.sh](scripts/smoke.sh).
+
+> **Python version matters for Spark.** PySpark 3.5.4 supports Python 3.8–3.11
+> only. On Python 3.12+ the Spark job's Python workers die with
+> `EOFException` — pure-JVM DataFrame operations still work, which makes the
+> failure confusingly partial. Everything *except* `streaming/spark_job.py`
+> runs fine on 3.12/3.13.
+
+### Running the Spark job
+
+`streaming/spark_job.py` needs a POSIX filesystem. On Windows, Spark cannot
+write files without `HADOOP_HOME` and `winutils.exe`, so the Parquet archive
+sink and the streaming checkpoints both fail with
+`HADOOP_HOME and hadoop.home.dir are unset`. Rather than installing winutils,
+run it in a Linux container on the Compose network:
+
+```
+docker run --rm --network bigdataminiproject_default \
+  -v "$PWD:/opt/project" -w /opt/project -e PYTHONPATH=/opt/project \
+  -e DATABASE_URL="postgresql://hospital:hospital@postgres:5432/hospital" \
+  --user root apache/spark:3.5.4-python3 bash -c \
+  "pip install --quiet 'psycopg[binary]==3.2.3' PyYAML==6.0.3; \
+   /opt/spark/bin/spark-submit --master 'local[2]' \
+   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.4 \
+   streaming/spark_job.py --bootstrap-servers kafka:29092"
+```
+
+Note `kafka:29092`, not `9092` — see [docs/contracts.md](docs/contracts.md) §2
+for why containers use a different listener than host processes.
 
 ## Start the stack
 

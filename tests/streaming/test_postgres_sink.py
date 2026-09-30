@@ -133,6 +133,30 @@ def test_relapse_opens_a_new_alert_episode(cursor):
     assert alerts.count(("TACHYCARDIA", True)) == 1, "relapse should open a new alert"
 
 
+def test_out_of_order_window_does_not_violate_the_check_constraint(cursor):
+    """Regression: Spark's update output mode emits windows out of order.
+
+    A later window opens an alert, then an earlier window (late data) arrives
+    with no flags. Resolving with that earlier window_end would give
+    resolved_at < triggered_at, violating the alerts_log CHECK constraint and
+    killing the streaming query -- which is exactly what happened the first
+    time the real Spark job ran.
+    """
+    _write(cursor, 5, ["TACHYCARDIA"])   # window at +25 min opens the alert
+    _write(cursor, 1, [])                # late window at +5 min, no flags
+
+    # The alert must survive, still open, rather than the write blowing up.
+    assert _alerts(cursor) == [("TACHYCARDIA", True)]
+
+
+def test_later_window_still_resolves_the_alert(cursor):
+    # The guard must not prevent legitimate resolution by a later window.
+    _write(cursor, 1, ["TACHYCARDIA"])
+    _write(cursor, 2, [])
+
+    assert _alerts(cursor) == [("TACHYCARDIA", False)]
+
+
 def test_window_upsert_is_idempotent(cursor):
     _write(cursor, 0, ["TACHYCARDIA"])
     _write(cursor, 0, ["TACHYCARDIA"])
