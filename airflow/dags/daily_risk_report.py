@@ -10,14 +10,16 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from batch.pipeline import aggregate_vitals as aggregate_vitals_from_archive, build_reports, read_lab_file, summarize_labs
+from common.config import load_settings
+from common.sim_clock import sim_date_for
 
 try:
     from airflow import DAG
     from airflow.operators.empty import EmptyOperator
     from airflow.operators.python import PythonOperator
-    from airflow.sensors.filesystem import FileSensor
+    from airflow.sensors.python import PythonSensor
 except ImportError:  # Allows repository tooling to inspect this file locally.
-    DAG = FileSensor = PythonOperator = EmptyOperator = None
+    DAG = PythonSensor = PythonOperator = EmptyOperator = None
 
 
 def on_failure(context):
@@ -25,22 +27,60 @@ def on_failure(context):
     get_logger("batch").error("daily risk DAG task failed", extra={"batch_id": context.get("run_id"), "task_id": context.get("task_instance").task_id})
 
 
+def _data_root() -> Path:
+    return Path(os.getenv("DATA_ROOT", "."))
+
+
+def _report_date(context) -> date:
+    """The simulated report date this run is responsible for.
+
+    The DAG fires every 5 real minutes and exactly one simulated day passes
+    in that time, so the run's logical date (a real instant) has to be
+    translated through the shared simulated clock. Using context["ds"]
+    directly -- as this DAG originally did -- yields the real calendar date,
+    which never matches the simulated dates the simulators stamp onto lab
+    filenames and vitals events, so the sensor could never fire.
+
+    Deriving from logical_date rather than the wall clock keeps the run
+    idempotent: retries and backfills of the same run resolve to the same
+    simulated date.
+    """
+    return sim_date_for(context["logical_date"])
+
+
+def _processed_lab_path(report_date: date) -> Path:
+    """Path to the validated lab file for a simulated date.
+
+    Reads from the *processed* folder, not the landing folder:
+    ingestion/lab_loader.py validates each dropped file and moves it here
+    within seconds, so a sensor watching the landing folder would race the
+    loader and usually lose.
+    """
+    processed = load_settings()["paths"]["landing_processed"]
+    return _data_root() / processed / f"labs_{report_date}.csv"
+
+
+def lab_file_ready(**context) -> bool:
+    report_date = _report_date(context)
+    return _processed_lab_path(report_date).exists()
+
+
 def ingest_labs_task(**context):
-    report_date = date.fromisoformat(context["ds"])
-    path = Path(os.getenv("DATA_ROOT", ".")) / "data" / "landing" / "labs" / f"labs_{report_date}.csv"
-    return read_lab_file(path, report_date)
+    report_date = _report_date(context)
+    return read_lab_file(_processed_lab_path(report_date), report_date)
 
 
 def aggregate_vitals_task(**context):
-    report_date = date.fromisoformat(context["ds"])
-    archive = Path(os.getenv("DATA_ROOT", ".")) / "data" / "archive" / "vitals" / f"date={report_date}"
-    files = list(archive.glob("*.jsonl")) + list(archive.glob("*.json"))
+    report_date = _report_date(context)
+    archive_root = load_settings()["paths"]["archive_vitals"]
+    archive = _data_root() / archive_root / f"date={report_date}"
+    files = sorted(archive.glob("*.parquet")) + sorted(archive.glob("*.jsonl")) + sorted(archive.glob("*.json"))
     return aggregate_vitals_from_archive(files, report_date) if files else {}
 
 
 def join_and_score_task(**context):
     task_instance = context["ti"]
-    report_date = date.fromisoformat(context["ds"])
+    report_date = _report_date(context)
     labs = summarize_labs(task_instance.xcom_pull(task_ids="ingest_labs"))
     vitals = task_instance.xcom_pull(task_ids="aggregate_vitals") or {}
     return build_reports(report_date, vitals, labs)
@@ -72,14 +112,23 @@ def write_report_task(**context):
 if DAG is not None:
     with DAG(
         dag_id="daily_risk_report",
+        # One run every 5 real minutes == one simulated day (see
+        # config/settings.yaml sim_clock). catchup is off deliberately: with a
+        # 5-minute schedule, catchup=True plus a start_date months in the past
+        # queues tens of thousands of runs the moment the scheduler starts.
+        # Backfilling a specific range is still supported on demand via
+        # `airflow dags backfill daily_risk_report -s ... -e ...`.
         schedule="*/5 * * * *",
         start_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        catchup=True,
+        catchup=False,
         max_active_runs=1,
         default_args={"retries": 2, "retry_delay": timedelta(seconds=30), "on_failure_callback": on_failure},
         tags=["batch", "risk-report"],
     ) as dag:
-        wait_for_lab_file = FileSensor(task_id="wait_for_lab_file", filepath="data/landing/labs/labs_{{ ds }}.csv", poke_interval=15, timeout=240, mode="reschedule")
+        # PythonSensor rather than FileSensor: the path depends on the
+        # simulated date, which has to be computed in Python from the run's
+        # logical date and can't be expressed as a Jinja-templated filepath.
+        wait_for_lab_file = PythonSensor(task_id="wait_for_lab_file", python_callable=lab_file_ready, poke_interval=15, timeout=240, mode="reschedule")
         ingest_labs = PythonOperator(task_id="ingest_labs", python_callable=ingest_labs_task)
         aggregate_vitals = PythonOperator(task_id="aggregate_vitals", python_callable=aggregate_vitals_task)
         join_and_score = PythonOperator(task_id="join_and_score", python_callable=join_and_score_task)

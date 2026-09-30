@@ -14,7 +14,9 @@ _pool = ConnectionPool(os.getenv("DATABASE_URL", "postgresql://hospital:hospital
 
 def _get_pool() -> ConnectionPool:
     if _pool.closed:
-        _pool.open(waiting=True)
+        # psycopg_pool's open() takes `wait`, not `waiting`; the wrong keyword
+        # raised TypeError on the first request to this endpoint.
+        _pool.open(wait=True)
     return _pool
 
 

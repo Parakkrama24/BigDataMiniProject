@@ -20,7 +20,16 @@ simulator:
   seed: 42
 
 paths:
+  # Where the lab simulator drops a new daily CSV.
   landing_labs: "data/landing/labs"
+  # Where ingestion/lab_loader.py moves files that pass validation. This is
+  # the handoff point: the Airflow DAG consumes validated files from here,
+  # never from landing_labs (the loader empties that folder as it works).
+  landing_processed: "data/landing/processed"
+  # Where the loader moves files that fail validation.
+  landing_rejected: "data/landing/rejected"
+  # Parquet vitals archive written by the Spark streaming job, partitioned
+  # as date=YYYY-MM-DD/ and read back by the daily batch job.
   archive_vitals: "data/archive/vitals"
 
 observability:

@@ -7,6 +7,7 @@ from datetime import datetime
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
     array,
+    array_compact,
     avg,
     col,
     current_timestamp,
@@ -14,7 +15,6 @@ from pyspark.sql.functions import (
     lit,
     max as spark_max,
     min as spark_min,
-    array_remove,
     size,
     sum as spark_sum,
     to_timestamp,
@@ -23,6 +23,7 @@ from pyspark.sql.functions import (
 )
 from pyspark.sql.types import DoubleType, StringType, StructField, StructType, TimestampType
 
+from streaming.postgres_sink import write_window
 from streaming.processing import load_thresholds
 
 
@@ -79,17 +80,26 @@ def aggregate_stream(events: DataFrame, thresholds: dict[str, float]) -> DataFra
             col("window.end").alias("window_end"),
             "avg_hr", "avg_spo2", "avg_systolic_bp", "avg_diastolic_bp", "avg_temp",
             "min_hr", "max_hr", "min_spo2", "max_spo2", "event_count",
-            array_remove(array(
+            # array_compact drops the NULLs left by the unmatched when()
+            # branches. array_remove(arr, lit(None)) was used here before, but
+            # Spark's array_remove returns NULL when the element to remove is
+            # NULL, so anomaly_flags could come out NULL instead of filtered.
+            array_compact(array(
                 when(col("tachycardia") == 1, lit("TACHYCARDIA")),
                 when(col("hypoxia") == 1, lit("HYPOXIA")),
                 when(col("fever") == 1, lit("FEVER")),
                 when(col("hypotension") == 1, lit("HYPOTENSION")),
-            ), lit(None)).alias("anomaly_flags"),
+            )).alias("anomaly_flags"),
         )
     )
 
 
 def upsert_postgres(batch: DataFrame, batch_id: int) -> None:
+    """foreachBatch sink: persist window aggregates and reconcile alerts.
+
+    The SQL and alert logic live in streaming.postgres_sink so they can be
+    tested without a Spark session.
+    """
     import psycopg
 
     connection_string = os.environ["DATABASE_URL"]
@@ -99,21 +109,7 @@ def upsert_postgres(batch: DataFrame, batch_id: int) -> None:
     with psycopg.connect(connection_string) as connection:
         with connection.cursor() as cursor:
             for row in rows:
-                cursor.execute(
-                    """
-                    INSERT INTO vitals_live
-                    (patient_id, window_start, window_end, avg_hr, avg_spo2,
-                     avg_systolic_bp, avg_diastolic_bp, avg_temp, event_count, anomaly_flags)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (patient_id, window_start) DO UPDATE SET
-                      window_end = EXCLUDED.window_end, avg_hr = EXCLUDED.avg_hr,
-                      avg_spo2 = EXCLUDED.avg_spo2, avg_systolic_bp = EXCLUDED.avg_systolic_bp,
-                      avg_diastolic_bp = EXCLUDED.avg_diastolic_bp, avg_temp = EXCLUDED.avg_temp,
-                      event_count = EXCLUDED.event_count, anomaly_flags = EXCLUDED.anomaly_flags
-                    """,
-                    (row.patient_id, row.window_start, row.window_end, row.avg_hr, row.avg_spo2,
-                     row.avg_systolic_bp, row.avg_diastolic_bp, row.avg_temp, row.event_count, []),
-                )
+                write_window(cursor, row.asDict())
 
 
 def build_query(spark: SparkSession, bootstrap_servers: str, topic: str, archive_path: str, checkpoint_path: str):

@@ -3,7 +3,12 @@ services:
     image: postgres:16.4
     container_name: postgres
     ports:
-      - "5432:5432"
+      # If you already run PostgreSQL natively, it will be holding host port
+      # 5432 and silently shadow this container -- connections from the host
+      # reach the native server instead and fail auth. Override the host side
+      # with POSTGRES_HOST_PORT=5433 (and DATABASE_URL to match). The
+      # in-container port stays 5432, so postgres:5432 URLs are unaffected.
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: hospital
       POSTGRES_PASSWORD: hospital

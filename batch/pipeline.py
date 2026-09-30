@@ -61,7 +61,15 @@ def read_lab_file(path: str | Path, report_date: date | None = None) -> list[dic
 
 
 def _iter_vitals(path: Path) -> Iterable[Mapping[str, Any]]:
-    if path.suffix == ".jsonl":
+    if path.suffix == ".parquet":
+        # The Spark streaming job archives raw vitals as Parquet partitioned
+        # by date (see streaming/spark_job.py and docs/archive_layout.md), so
+        # Parquet is the format this reader sees in practice. pyarrow is
+        # imported lazily so the JSON paths work without it installed.
+        import pyarrow.parquet as pq
+
+        yield from pq.read_table(path).to_pylist()
+    elif path.suffix == ".jsonl":
         with path.open(encoding="utf-8") as stream:
             yield from (json.loads(line) for line in stream if line.strip())
     elif path.suffix == ".json":
@@ -73,18 +81,23 @@ def _iter_vitals(path: Path) -> Iterable[Mapping[str, Any]]:
 
 def aggregate_vitals(files: Iterable[str | Path], report_date: date) -> dict[str, dict[str, Any]]:
     values: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    # Counted per accepted row, not per recorded vital value. Summing the
+    # per-vital series lengths instead would report roughly 5x the true
+    # number of readings, since each event contributes up to five values.
+    event_counts: dict[str, int] = defaultdict(int)
     for file_path in files:
         for row in _iter_vitals(Path(file_path)):
             timestamp = datetime.fromisoformat(str(row["timestamp"]).replace("Z", "+00:00"))
             if timestamp.date() != report_date or not row.get("patient_id"):
                 continue
+            event_counts[row["patient_id"]] += 1
             for source, target in (("heart_rate", "hr"), ("spo2", "spo2"), ("systolic_bp", "systolic_bp"), ("diastolic_bp", "diastolic_bp"), ("temperature", "temp")):
                 value = row.get(source)
                 if value is not None and math.isfinite(float(value)):
                     values[row["patient_id"]][target].append(float(value))
     result = {}
     for patient_id, metrics in values.items():
-        summary: dict[str, Any] = {"event_count": sum(map(len, metrics.values()))}
+        summary: dict[str, Any] = {"event_count": event_counts[patient_id]}
         for name, series in metrics.items():
             summary[f"avg_{name}"] = round(sum(series) / len(series), 3)
             summary[f"min_{name}"] = round(min(series), 3)

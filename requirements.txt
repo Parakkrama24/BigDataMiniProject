@@ -1,12 +1,20 @@
+# Shared/base
 PyYAML==6.0.3
 pytest==9.0.3
-fastapi==0.115.6
-httpx==0.28.1
-uvicorn[standard]==0.34.0
-psycopg[binary]==3.2.3
-pyspark==3.5.4
+
+# Ingestion + observability (Member 1)
 kafka-python==3.0.11
 prometheus-client==0.23.1
+
+# Streaming + serving API (Member 2)
+pyspark==3.5.4
 fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+
+# Batch + storage (Member 3)
 psycopg[binary]==3.2.3
 psycopg-pool==3.2.4
+# Reads the Parquet vitals archive written by the Spark streaming job
+# without needing a Spark session (batch/pipeline.py).
+pyarrow==23.0.1

@@ -36,8 +36,9 @@ def validate_lab_file(path: str) -> bool:
 
 
 def process_lab_file(path: str) -> str:
+    paths = load_settings()["paths"]
     is_valid = validate_lab_file(path)
-    dest_dir = "data/landing/processed" if is_valid else "data/landing/rejected"
+    dest_dir = paths["landing_processed"] if is_valid else paths["landing_rejected"]
 
     Path(dest_dir).mkdir(parents=True, exist_ok=True)
     dest_path = Path(dest_dir) / Path(path).name
