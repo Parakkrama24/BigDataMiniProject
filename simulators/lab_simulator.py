@@ -1,9 +1,12 @@
-import random
-from common.sim_clock import now as sim_now
+import argparse
 import csv
+import random
+import time
 from pathlib import Path
-from common.sim_clock import current_sim_date
+
 from common.config import load_settings
+from common.sim_clock import current_sim_date
+from common.sim_clock import now as sim_now
 
 TEST_TYPES = {
     "WBC": (4.0, 11.0),
@@ -50,13 +53,44 @@ def write_labs_csv(rows: list, path: str) -> None:
         writer.writeheader()
         writer.writerows(rows)
 
-if __name__ == "__main__":
+def emit_day(patient_ids: list, sim_date) -> str:
+    """Write one simulated day's lab file into the landing zone."""
+    landing = load_settings()["paths"]["landing_labs"]
+    path = f"{landing}/labs_{sim_date.isoformat()}.csv"
+    rows = generate_daily_labs(patient_ids)
+    write_labs_csv(rows, path)
+    # flush=True so --loop shows progress live; Python buffers stdout when it
+    # is piped rather than attached to a terminal.
+    print(f"Wrote {len(rows)} rows to {path}", flush=True)
+    return path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate daily pathology lab files.")
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Keep running, emitting one file each time the simulated date advances. "
+             "A simulated day passes every sim_day_seconds (default 5 real minutes), "
+             "which is also the Airflow DAG's schedule, so this keeps the batch layer fed.",
+    )
+    parser.add_argument("--poll-seconds", type=float, default=5.0,
+                        help="How often to check whether the simulated date has advanced.")
+    args = parser.parse_args()
+
     settings = load_settings()["simulator"]
     patient_ids = [f"P{i+1:03d}" for i in range(settings["num_patients"])]
 
-    rows = generate_daily_labs(patient_ids)
-    date_str = current_sim_date().isoformat()
-    path = f"data/landing/labs/labs_{date_str}.csv"
+    emitted = set()
+    while True:
+        sim_date = current_sim_date()
+        if sim_date not in emitted:
+            emit_day(patient_ids, sim_date)
+            emitted.add(sim_date)
+        if not args.loop:
+            return
+        time.sleep(args.poll_seconds)
 
-    write_labs_csv(rows, path)
-    print(f"Wrote {len(rows)} rows to {path}")
+
+if __name__ == "__main__":
+    main()

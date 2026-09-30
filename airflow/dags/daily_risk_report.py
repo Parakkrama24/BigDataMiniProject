@@ -60,8 +60,29 @@ def _processed_lab_path(report_date: date) -> Path:
     return _data_root() / processed / f"labs_{report_date}.csv"
 
 
+def _sim_start_date() -> date:
+    return date.fromisoformat(load_settings()["sim_clock"]["sim_start_date"])
+
+
 def lab_file_ready(**context) -> bool:
+    """Sensor: has this run's simulated day produced a validated lab file?
+
+    Runs whose simulated date precedes sim_start_date are skipped rather than
+    polled. scripts/reset_sim_clock.py moves real_start forward to "now"
+    before a demo, which retroactively maps every already-scheduled run to a
+    simulated day *before* the simulation began. No lab file can ever exist
+    for those, so without this they each burn the full sensor timeout and
+    fail, filling the UI with red runs that can never succeed.
+    """
     report_date = _report_date(context)
+    sim_start = _sim_start_date()
+    if report_date < sim_start:
+        from airflow.exceptions import AirflowSkipException
+
+        raise AirflowSkipException(
+            f"simulated date {report_date} precedes sim_start_date {sim_start}; "
+            "this run predates the simulation (the clock was reset after it was scheduled)"
+        )
     return _processed_lab_path(report_date).exists()
 
 
