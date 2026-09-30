@@ -1,4 +1,8 @@
-hr_high: 120
-spo2_low: 90
-temp_high: 38.5
-sbp_low: 90
+vitals:
+  hr_high: 120
+  spo2_low: 90
+  temp_high: 38.5
+  sbp_low: 90
+risk:
+  medium_score: 30
+  high_score: 70
