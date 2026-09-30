@@ -23,7 +23,11 @@ def load_thresholds(path: str | Path | None = None) -> dict[str, float]:
     config_path = Path(path) if path else Path(__file__).resolve().parents[1] / "config" / "thresholds.yaml"
     with config_path.open("r", encoding="utf-8") as config_file:
         values = yaml.safe_load(config_file) or {}
-    return {key: float(value) for key, value in values.items()}
+    # config/thresholds.yaml nests the vital limits under "vitals:" (batch risk
+    # scoring thresholds live under "risk:"). Fall back to treating the whole
+    # file as a flat mapping so a flat thresholds file still works.
+    vitals = values.get("vitals", values)
+    return {key: float(value) for key, value in vitals.items()}
 
 
 def parse_timestamp(value: Any) -> datetime | None:
