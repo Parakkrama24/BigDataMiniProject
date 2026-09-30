@@ -1,5 +1,11 @@
 global:
   scrape_interval: 5s
+  # How often alerting rules are evaluated. Prometheus defaults to 1 minute,
+  # which is independent of scrape_interval -- so even with 5s scrapes an
+  # alert could sit "pending" for up to a minute before firing. 10s keeps the
+  # kill-the-producer demo responsive (alert fires ~40s after the process
+  # dies: the 30s `for` duration plus one evaluation).
+  evaluation_interval: 10s
 
 rule_files:
   - /etc/prometheus/alerts.yml

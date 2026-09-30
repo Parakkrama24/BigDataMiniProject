@@ -204,8 +204,18 @@ enforces that their method signatures stay identical.
   follow one event across ingestion → streaming → batch.
 - **Prometheus metrics**: `vitals_published_total`, `vitals_dlq_total`,
   `vitals_last_event_unix_seconds`, `lab_files_accepted/rejected_total`.
-- **Two alert rules**: `NoVitalsReceived` (nothing for 60s) and
-  `DlqErrorRateHigh`.
+- **Three alert rules**:
+  - `VitalsProducerDown` — the producer process has crashed (`up == 0`)
+  - `NoVitalsReceived` — producer alive but publishing nothing for 60s
+  - `DlqErrorRateHigh` — too many records being rejected
+
+> **Why two rules for "no vitals", not one?** A crashed producer and a stalled
+> producer look completely different to Prometheus. When the process dies, the
+> scrape fails and `vitals_last_event_unix_seconds` is marked **stale** — it
+> stops returning any value, so an expression over it evaluates to *no data*
+> and can never fire. Only `up`, which Prometheus synthesises for every target,
+> reliably catches a crash. This is worth being able to explain: it's a real
+> Prometheus subtlety we hit when testing the alert.
 - **Grafana dashboard**: events/sec, DLQ count, seconds-since-last-event, lab
   file counts, active alerts.
 
@@ -298,7 +308,7 @@ compression clearly**. Suggested structure:
 | 3:15–4:15 | **Ingestion live.** Producer logs scrolling; show a DLQ event via `scripts/demo_bad_data.py`; mention keying by `patient_id` and the injected noise | **15** |
 | 4:15–5:30 | **Processing.** Spark job running; `vitals_live` filling; an alert appearing in `alerts_log`; then the Airflow DAG graph going green | **15** |
 | 5:30–6:30 | **Storage & serving.** `/vitals/live` showing a flagged patient, `/patients/{id}/alerts`, and `/reports/daily/{date}` — the consolidated report that answers the business question | **10** |
-| 6:30–8:00 | **Observability.** Grafana dashboard; then run `scripts/demo_kill_producer.py` and show `NoVitalsReceived` go from inactive → firing → clear | **10** |
+| 6:30–8:00 | **Observability.** Grafana dashboard; then run `scripts/demo_kill_producer.py` and show `VitalsProducerDown` go inactive → pending → firing → clear (~50s) | **10** |
 | 8:00–9:00 | **Limitations, honestly stated** (see below) | Counts toward report/viva credibility |
 
 **Must say out loud:**

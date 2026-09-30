@@ -186,7 +186,7 @@ while it is listening, and fails loudly if no messages arrive.
   and active alerts.
 - **Demo scenarios**:
   ```
-  python scripts/demo_kill_producer.py   # kill the producer, watch NoVitalsReceived fire, restart, watch it clear
+  python scripts/demo_kill_producer.py   # kill the producer, watch VitalsProducerDown fire (~50s), restart, watch it clear (~20s)
   python -m scripts.demo_bad_data        # push malformed events through real validation into the DLQ
   ```
 

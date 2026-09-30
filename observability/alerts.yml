@@ -4,20 +4,41 @@
 groups:
   - name: vitals_pipeline
     rules:
-      - alert: NoVitalsReceived
-        # vitals_last_event_unix_seconds is a gauge set to the Unix time of the
-        # last successfully published vitals event. If it hasn't moved in the
-        # last 60 seconds, nothing is reaching Kafka -- the producer or
-        # simulator has likely died.
-        expr: time() - vitals_last_event_unix_seconds > 60
+      # Two rules are needed because a crashed producer and a stalled producer
+      # look completely different to Prometheus, and only one of them leaves
+      # the vitals_last_event_unix_seconds gauge behind to inspect.
+
+      - alert: VitalsProducerDown
+        # When the producer process dies, the scrape fails and Prometheus marks
+        # its series stale -- vitals_last_event_unix_seconds stops returning any
+        # value at all. An expression over that gauge therefore evaluates to no
+        # data and can never fire. `up` is synthesised by Prometheus for every
+        # target and reliably goes to 0, so this is what actually catches a
+        # crash. This is the rule the kill-the-producer demo triggers.
+        expr: up{job="producer"} == 0
         for: 30s
         labels:
           severity: critical
         annotations:
-          summary: "No vitals events received in over 60 seconds"
+          summary: "Vitals producer is down"
           description: >-
-            The producer has not published a vitals event recently.
-            Check whether the producer process or simulator has crashed.
+            Prometheus cannot scrape the vitals producer, so no vitals are
+            reaching Kafka. Check whether the producer process has crashed.
+
+      - alert: NoVitalsReceived
+        # The complementary case: the producer is up and being scraped, but the
+        # gauge holding the time of the last published event has stopped
+        # advancing -- so the process is alive yet publishing nothing (a stuck
+        # simulator, or a broker it cannot write to).
+        expr: up{job="producer"} == 1 and (time() - vitals_last_event_unix_seconds > 60)
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Producer is running but has published no vitals for 60s"
+          description: >-
+            The producer is being scraped but its last-event timestamp has
+            stopped advancing. The simulator may be stuck or Kafka unreachable.
 
       - alert: DlqErrorRateHigh
         # Fires if the DLQ is absorbing more than 1 rejected event per second,

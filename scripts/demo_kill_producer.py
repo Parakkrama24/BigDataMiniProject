@@ -4,7 +4,7 @@ Observability demo #1: kill the producer and watch the alert fire.
 What this shows for the report/demo video:
   1. The producer is running and vitals_last_event_unix_seconds is advancing.
   2. We kill the producer process (simulating a crash).
-  3. Prometheus's NoVitalsReceived alert rule transitions
+  3. Prometheus's VitalsProducerDown alert rule transitions
      inactive -> pending -> firing once the gauge stops advancing for long
      enough (60s threshold + 30s "for" duration, see observability/alerts.yml).
   4. We restart the producer and show the alert clear back to inactive.
@@ -23,7 +23,12 @@ import time
 import urllib.request
 
 PROMETHEUS_URL = "http://localhost:9090/api/v1/alerts"
-ALERT_NAME = "NoVitalsReceived"
+# VitalsProducerDown, not NoVitalsReceived: when the producer process dies its
+# scrape fails and Prometheus marks vitals_last_event_unix_seconds stale, so
+# expressions over that gauge return no data and can never fire. `up` is
+# synthesised for every target and reliably drops to 0, so it is what actually
+# catches a crash. NoVitalsReceived covers the other case -- alive but stalled.
+ALERT_NAME = "VitalsProducerDown"
 POLL_SECONDS = 5
 MAX_POLLS = 24  # 24 * 5s = 120s, comfortably past the 90s (60s+30s) threshold
 
@@ -67,7 +72,7 @@ def main():
     print("Producer stopped. No more vitals will reach Kafka.")
 
     print(f"\n== Watching for {ALERT_NAME} to fire ==")
-    print("(this can take up to ~90s: 60s no-data threshold + 30s for-duration)")
+    print("(takes ~50s: the 30s for-duration plus rule evaluation)")
     watch_until({"firing"}, "FIRING")
     print(f"See it live at http://localhost:9090/alerts or the Grafana dashboard's 'Active alerts' panel.")
 

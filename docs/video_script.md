@@ -6,7 +6,6 @@ minute demo video the assignment requires.
 The assignment asks for a video "showing the pipeline running end-to-end and
 the observability results", and requires you to "clearly state any
 assumptions, simplifications, or simulated-time compression used".
-
 **Speaker roles** (match them to the layer each person built, since individual
 contributions must be stated):
 
@@ -258,17 +257,27 @@ python scripts/demo_kill_producer.py
 ```
 
 **Say while it runs:**
-> "This kills the producer, simulating a crashed ingestion service. Our
-> `NoVitalsReceived` rule watches the gauge holding the time of the last
-> published event. When nothing arrives for 60 seconds, the alert goes pending,
-> then fires."
+> "This kills the producer, simulating a crashed ingestion service.
+>
+> We actually have **two** rules for this, and the reason is a nice Prometheus
+> subtlety we discovered while testing. Our first attempt watched the gauge
+> holding the time of the last published event — but when the producer process
+> dies, the scrape fails and Prometheus marks that series **stale**. It stops
+> returning any value at all, so the expression evaluates to no data and the
+> alert could never fire for the exact case we cared about.
+>
+> So `VitalsProducerDown` uses `up`, which Prometheus synthesises for every
+> target and reliably drops to zero on a crash. `NoVitalsReceived` covers the
+> complementary case — producer alive, but publishing nothing."
 
-**Switch to** `http://localhost:9090/alerts` and let it go red.
+**Switch to** `http://localhost:9090/alerts` and let it go **pending**, then red.
 
-> "There it is — firing. And when the producer restarts, it clears."
+> "There it goes — pending first, while the `for` duration elapses, then
+> firing. And when the producer restarts, it clears within about 20 seconds."
 
-> ⏱️ This takes ~90 seconds (60s threshold + 30s `for:` duration). Either fill
-> the time by talking through the metrics, or cut the wait in editing.
+> ⏱️ Fires ~50 seconds after the kill, clears ~20 seconds after restart. That
+> stale-series explanation fills the wait nicely — and it's exactly the kind of
+> "detect and diagnose" depth the observability marks reward.
 
 ### 8:20–9:00 — Limitations & contributions (M3)
 
